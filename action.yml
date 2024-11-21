@@ -1,0 +1,25 @@
+name: Update a single parameter in an existing CloudFormation stack while preserving all other settings
+description: >
+  Updates a single parameter in an existing CloudFormation stack while preserving all other settings.
+
+inputs:
+  stack:
+    description: CloudFormation stack name
+    required: true
+  key:
+    description: Name of stack parameter to update
+    required: true
+  value:
+    description: New value to set for a given parameter
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version: 'stable'
+        cache-dependency-path: ${{ github.action_path }}/go.sum
+    - shell: bash
+      run: |
+        go run -C ${{ github.action_path }} . -stack=${{ inputs.stack }} -key=${{ inputs.key }} -value=${{ inputs.value }}
