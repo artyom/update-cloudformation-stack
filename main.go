@@ -45,7 +45,7 @@ type runArgs struct {
 	value string
 }
 
-var errAlreadySet = errors.New("stack alerady has required parameter value")
+var errAlreadySet = errors.New("stack already has required parameter value")
 
 func run(ctx context.Context, args runArgs) error {
 	if err := args.validate(); err != nil {
