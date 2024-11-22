@@ -14,12 +14,9 @@ inputs:
     required: true
 
 runs:
-  using: composite
-  steps:
-    - uses: actions/setup-go@v5
-      with:
-        go-version: 'stable'
-        cache-dependency-path: ${{ github.action_path }}/go.sum
-    - shell: bash
-      run: |
-        go run -C ${{ github.action_path }} . -stack=${{ inputs.stack }} -key=${{ inputs.key }} -value=${{ inputs.value }}
+  using: docker
+  image: docker://ghcr.io/artyom/update-cloudformation-stack:latest
+  args:
+    - '-stack=${{ inputs.stack }}'
+    - '-key=${{ inputs.key }}'
+    - '-value=${{ inputs.value }}'
