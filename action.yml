@@ -1,4 +1,4 @@
-name: Update a single parameter in an existing CloudFormation stack while preserving all other settings
+name: Update CloudFormation stack by changing a single parameter
 description: >
   Updates a single parameter in an existing CloudFormation stack while preserving all other settings.
 
