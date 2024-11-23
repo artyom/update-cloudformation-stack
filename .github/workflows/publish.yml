@@ -29,7 +29,7 @@ jobs:
             linux/arm64
             linux/amd64
           tags: |
-            ghcr.io/artyom/update-cloudformation-stack:latest
+            ghcr.io/${{ github.repository }}:latest
           outputs: type=image,oci-mediatypes=true,compression=zstd,compression-level=6,force-compression=true
           cache-from: type=gha
           cache-to: type=gha,mode=max
