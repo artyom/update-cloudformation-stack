@@ -64,10 +64,10 @@ func run(ctx context.Context, args runArgs) error {
 	if l := len(desc.Stacks); l != 1 {
 		return fmt.Errorf("DescribeStacks returned %d stacks, expected 1", l)
 	}
-
+	stack := desc.Stacks[0]
 	var params []types.Parameter
 	var seenKey bool
-	for _, p := range desc.Stacks[0].Parameters {
+	for _, p := range stack.Parameters {
 		k := aws.ToString(p.ParameterKey)
 		if k == args.key && aws.ToString(p.ParameterValue) == args.value {
 			return errAlreadySet
@@ -89,6 +89,8 @@ func run(ctx context.Context, args runArgs) error {
 		ClientRequestToken:  &token,
 		UsePreviousTemplate: aws.Bool(true),
 		Parameters:          params,
+		Capabilities:        stack.Capabilities,
+		NotificationARNs:    stack.NotificationARNs,
 	})
 	if err != nil {
 		return err
