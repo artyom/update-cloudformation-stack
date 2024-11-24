@@ -8,7 +8,10 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"maps"
 	"os"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -20,16 +23,10 @@ import (
 
 func main() {
 	log.SetFlags(0)
-	var args runArgs
-	flag.StringVar(&args.stack, "stack", args.stack, "name of the CloudFormation stack to update")
-	flag.StringVar(&args.key, "key", args.key, "parameter name to update")
-	flag.StringVar(&args.value, "value", args.value, "parameter value to set")
+	var stackName string
+	flag.StringVar(&stackName, "stack", stackName, "name of the CloudFormation stack to update")
 	flag.Parse()
-	if err := run(context.Background(), args); err != nil {
-		if errors.Is(err, errAlreadySet) {
-			log.Print(githubWarnPrefix, err)
-			return
-		}
+	if err := run(context.Background(), stackName, flag.Args()); err != nil {
 		var ae smithy.APIError
 		if errors.As(err, &ae) && ae.ErrorCode() == "ValidationError" && ae.ErrorMessage() == "No updates are to be performed." {
 			log.Print(githubWarnPrefix, "nothing to update")
@@ -39,17 +36,19 @@ func main() {
 	}
 }
 
-type runArgs struct {
-	stack string
-	key   string
-	value string
-}
-
-var errAlreadySet = errors.New("stack already has required parameter value")
-
-func run(ctx context.Context, args runArgs) error {
-	if err := args.validate(); err != nil {
+func run(ctx context.Context, stackName string, args []string) error {
+	if stackName == "" {
+		return errors.New("stack name must be set")
+	}
+	if underGithub && len(args) == 0 {
+		args = strings.Split(os.Getenv("INPUT_PARAMETERS"), "\n")
+	}
+	toReplace, err := parseKvs(args)
+	if err != nil {
 		return err
+	}
+	if len(toReplace) == 0 {
+		return errors.New("empty parameters list")
 	}
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
@@ -57,7 +56,7 @@ func run(ctx context.Context, args runArgs) error {
 	}
 	svc := cloudformation.NewFromConfig(cfg)
 
-	desc, err := svc.DescribeStacks(ctx, &cloudformation.DescribeStacksInput{StackName: &args.stack})
+	desc, err := svc.DescribeStacks(ctx, &cloudformation.DescribeStacksInput{StackName: &stackName})
 	if err != nil {
 		return err
 	}
@@ -66,26 +65,22 @@ func run(ctx context.Context, args runArgs) error {
 	}
 	stack := desc.Stacks[0]
 	var params []types.Parameter
-	var seenKey bool
 	for _, p := range stack.Parameters {
 		k := aws.ToString(p.ParameterKey)
-		if k == args.key && aws.ToString(p.ParameterValue) == args.value {
-			return errAlreadySet
-		}
-		if k == args.key {
-			seenKey = true
+		if v, ok := toReplace[k]; ok {
+			params = append(params, types.Parameter{ParameterKey: &k, ParameterValue: &v})
+			delete(toReplace, k)
 			continue
 		}
 		params = append(params, types.Parameter{ParameterKey: &k, UsePreviousValue: aws.Bool(true)})
 	}
-	if !seenKey {
-		return errors.New("stack has no parameter with the given key")
+	if len(toReplace) != 0 {
+		return fmt.Errorf("stack has no parameters with these names: %s", strings.Join(slices.Sorted(maps.Keys(toReplace)), ", "))
 	}
-	params = append(params, types.Parameter{ParameterKey: &args.key, ParameterValue: &args.value})
 
 	token := newToken()
 	_, err = svc.UpdateStack(ctx, &cloudformation.UpdateStackInput{
-		StackName:           &args.stack,
+		StackName:           &stackName,
 		ClientRequestToken:  &token,
 		UsePreviousTemplate: aws.Bool(true),
 		Parameters:          params,
@@ -111,7 +106,7 @@ func run(ctx context.Context, args runArgs) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		}
-		p := cloudformation.NewDescribeStackEventsPaginator(svc, &cloudformation.DescribeStackEventsInput{StackName: &args.stack})
+		p := cloudformation.NewDescribeStackEventsPaginator(svc, &cloudformation.DescribeStackEventsInput{StackName: &stackName})
 	scanEvents:
 		for p.HasMorePages() {
 			page, err := p.NextPage(ctx)
@@ -129,7 +124,7 @@ func run(ctx context.Context, args runArgs) error {
 					return fmt.Errorf("%v: %s", evt.ResourceStatus, aws.ToString(evt.ResourceStatusReason))
 				}
 				debugf("%s\t%s\t%v", aws.ToString(evt.ResourceType), aws.ToString(evt.LogicalResourceId), evt.ResourceStatus)
-				if aws.ToString(evt.LogicalResourceId) == args.stack && aws.ToString(evt.ResourceType) == "AWS::CloudFormation::Stack" {
+				if aws.ToString(evt.LogicalResourceId) == stackName && aws.ToString(evt.ResourceType) == "AWS::CloudFormation::Stack" {
 					switch evt.ResourceStatus {
 					case types.ResourceStatusUpdateComplete:
 						return nil
@@ -148,17 +143,10 @@ func newToken() string {
 	return "ucs-" + hex.EncodeToString(b)
 }
 
-func (a *runArgs) validate() error {
-	if a.stack == "" || a.key == "" || a.value == "" {
-		return errors.New("stack, key, and value cannot be empty")
-	}
-	return nil
-}
-
 func init() {
-	const usage = `Updates a single parameter in an existing CloudFormation stack while preserving all other settings.
+	const usage = `Updates CloudFormation stack by updating some of its parameters while preserving all other settings.
 
-Usage: update-cloudformation-stack -stack NAME -key PARAM -value VALUE
+Usage: update-cloudformation-stack -stack=NAME Param1=Value1 [Param2=Value2 ...]
 `
 	flag.Usage = func() {
 		fmt.Fprint(flag.CommandLine.Output(), usage)
@@ -176,4 +164,27 @@ func init() {
 		githubWarnPrefix = "::warning::"
 		githubErrPrefix = "::error::"
 	}
+}
+
+func parseKvs(list []string) (map[string]string, error) {
+	out := make(map[string]string)
+	for _, line := range list {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		k, v, ok := strings.Cut(line, "=")
+		if !ok {
+			return nil, fmt.Errorf("wrong parameter format, want key=value pair: %q", line)
+		}
+		k, v = strings.TrimSpace(k), strings.TrimSpace(v)
+		if k == "" || v == "" {
+			return nil, fmt.Errorf("wrong parameter format, both key and value must be non-empty: %q", line)
+		}
+		if _, ok := out[k]; ok {
+			return nil, fmt.Errorf("duplicate key in parameters list: %q", k)
+		}
+		out[k] = v
+	}
+	return out, nil
 }

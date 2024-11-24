@@ -1,6 +1,6 @@
-# Update CloudFormation Stack Parameter Action
+# Update CloudFormation Stack Parameters Action
 
-This GitHub Action updates a single parameter in an existing CloudFormation stack while preserving all other settings.
+This GitHub Action updates existing CloudFormation stack by changing some of its parameters while preserving all other settings.
 
 ## Usage
 
@@ -8,15 +8,15 @@ This GitHub Action updates a single parameter in an existing CloudFormation stac
 - uses: artyom/update-cloudformation-stack@main
   with:
     stack: my-stack-name
-    key: ParameterName
-    value: NewValue
+    parameters: |
+      Name1=value1
+      Name2=value2
 ```
 
 ## Inputs
 
-- `stack` - Name of the CloudFormation stack to update
-- `key` - Name of the stack parameter to update
-- `value` - New value to set for the parameter
+- `stack` - name of the CloudFormation stack to update
+- `parameters` - pairs of parameters in the Name=Value format, each pair on a separate line
 
 ## AWS Credentials
 
@@ -51,8 +51,8 @@ jobs:
       - uses: artyom/update-cloudformation-stack@main
         with:
           stack: production-stack
-          key: ImageTag
-          value: v123
+          parameters: |
+            ImageTag=v123
 ```
 
-The action will monitor stack update progress and fail if update fails. If parameter already has the requested value, action will exit with a warning message.
+The action will monitor stack update progress and fail if update fails.

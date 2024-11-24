@@ -1,16 +1,15 @@
-name: Update CloudFormation stack by changing a single parameter
+name: Update CloudFormation stack by only changing its parameters
 description: >
-  Updates a single parameter in an existing CloudFormation stack while preserving all other settings.
+  Updates CloudFormation stack by updating its parameters while preserving all other settings.
 
 inputs:
   stack:
     description: CloudFormation stack name
     required: true
-  key:
-    description: Name of stack parameter to update
-    required: true
-  value:
-    description: New value to set for a given parameter
+  parameters:
+    description: >
+      Newline-separated parameters to change in the Name=Value format.
+      Stack parameters not set here would retain their existing values.
     required: true
 
 runs:
@@ -18,5 +17,3 @@ runs:
   image: docker://ghcr.io/artyom/update-cloudformation-stack:latest
   args:
     - '-stack=${{ inputs.stack }}'
-    - '-key=${{ inputs.key }}'
-    - '-value=${{ inputs.value }}'
