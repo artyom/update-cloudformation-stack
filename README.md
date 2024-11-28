@@ -56,3 +56,12 @@ jobs:
 ```
 
 The action will monitor stack update progress and fail if update fails.
+
+## Known Limitations
+
+This action doesn't work for stacks that rely on template transformations
+(stack template has non-empty [“Transform” section][transform]).
+
+On such stacks UpdateStack API call does not recognize parameters-only changes and the action reports there's nothing to update.
+
+[transform]: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/transform-section-structure.html
