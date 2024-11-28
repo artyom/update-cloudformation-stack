@@ -29,6 +29,7 @@ func main() {
 	if err := run(context.Background(), stackName, flag.Args()); err != nil {
 		var ae smithy.APIError
 		if errors.As(err, &ae) && ae.ErrorCode() == "ValidationError" && ae.ErrorMessage() == "No updates are to be performed." {
+			debugf("error: %v", err)
 			log.Print(githubWarnPrefix, "nothing to update")
 			return
 		}
@@ -50,6 +51,7 @@ func run(ctx context.Context, stackName string, args []string) error {
 	if len(toReplace) == 0 {
 		return errors.New("empty parameters list")
 	}
+	debugf("loaded parameters: %v", toReplace)
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return err
@@ -78,6 +80,16 @@ func run(ctx context.Context, stackName string, args []string) error {
 		return fmt.Errorf("stack has no parameters with these names: %s", strings.Join(slices.Sorted(maps.Keys(toReplace)), ", "))
 	}
 
+	debugf("parameters to call UpdateStack with:")
+	for _, p := range params {
+		switch {
+		case aws.ToBool(p.UsePreviousValue):
+			debugf("%s (use the previous value)", aws.ToString(p.ParameterKey))
+		default:
+			debugf("%s: %s", aws.ToString(p.ParameterKey), aws.ToString(p.ParameterValue))
+		}
+	}
+
 	token := newToken()
 	_, err = svc.UpdateStack(ctx, &cloudformation.UpdateStackInput{
 		StackName:           &stackName,
@@ -91,12 +103,6 @@ func run(ctx context.Context, stackName string, args []string) error {
 		return err
 	}
 	log.Print("polling for stack updates until it's ready, this may take a while")
-	debugf := func(format string, args ...any) {
-		if !underGithub {
-			return
-		}
-		log.Printf("::debug::"+format, args...)
-	}
 	oldEventsCutoff := time.Now().Add(-time.Hour)
 	ticker := time.NewTicker(20 * time.Second)
 	defer ticker.Stop()
@@ -141,6 +147,13 @@ func newToken() string {
 		panic(err)
 	}
 	return "ucs-" + hex.EncodeToString(b)
+}
+
+func debugf(format string, args ...any) {
+	if !underGithub {
+		return
+	}
+	log.Printf("::debug::"+format, args...)
 }
 
 func init() {
