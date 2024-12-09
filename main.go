@@ -132,6 +132,9 @@ func run(ctx context.Context, stackName string, args []string) error {
 				debugf("%s\t%s\t%v", aws.ToString(evt.ResourceType), aws.ToString(evt.LogicalResourceId), evt.ResourceStatus)
 				if aws.ToString(evt.LogicalResourceId) == stackName && aws.ToString(evt.ResourceType) == "AWS::CloudFormation::Stack" {
 					switch evt.ResourceStatus {
+					case types.ResourceStatusUpdateRollbackComplete,
+						types.ResourceStatusRollbackFailed:
+						return fmt.Errorf("%v, see AWS CloudFormation Console for more details", evt.ResourceStatus)
 					case types.ResourceStatusUpdateComplete:
 						return nil
 					}
