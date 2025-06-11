@@ -126,7 +126,7 @@ func run(ctx context.Context, stackName string, args []string) error {
 				if evt.ClientRequestToken == nil || *evt.ClientRequestToken != token {
 					continue
 				}
-				if evt.ResourceStatus == types.ResourceStatusUpdateFailed {
+				if evt.ResourceStatus == types.ResourceStatusUpdateFailed && aws.ToString(evt.ResourceStatusReason) != "Resource update cancelled" {
 					return fmt.Errorf("%v: %s", evt.ResourceStatus, aws.ToString(evt.ResourceStatusReason))
 				}
 				debugf("%s\t%s\t%v", aws.ToString(evt.ResourceType), aws.ToString(evt.LogicalResourceId), evt.ResourceStatus)
