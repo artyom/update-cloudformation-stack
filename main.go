@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
@@ -68,13 +67,13 @@ func run(ctx context.Context, stackName string, args []string) error {
 	stack := desc.Stacks[0]
 	var params []types.Parameter
 	for _, p := range stack.Parameters {
-		k := aws.ToString(p.ParameterKey)
+		k := unptr(p.ParameterKey)
 		if v, ok := toReplace[k]; ok {
 			params = append(params, types.Parameter{ParameterKey: &k, ParameterValue: &v})
 			delete(toReplace, k)
 			continue
 		}
-		params = append(params, types.Parameter{ParameterKey: &k, UsePreviousValue: aws.Bool(true)})
+		params = append(params, types.Parameter{ParameterKey: &k, UsePreviousValue: ptr(true)})
 	}
 	if len(toReplace) != 0 {
 		return fmt.Errorf("stack has no parameters with these names: %s", strings.Join(slices.Sorted(maps.Keys(toReplace)), ", "))
@@ -83,10 +82,10 @@ func run(ctx context.Context, stackName string, args []string) error {
 	debugf("parameters to call UpdateStack with:")
 	for _, p := range params {
 		switch {
-		case aws.ToBool(p.UsePreviousValue):
-			debugf("%s (use the previous value)", aws.ToString(p.ParameterKey))
+		case unptr(p.UsePreviousValue):
+			debugf("%s (use the previous value)", unptr(p.ParameterKey))
 		default:
-			debugf("%s: %s", aws.ToString(p.ParameterKey), aws.ToString(p.ParameterValue))
+			debugf("%s: %s", unptr(p.ParameterKey), unptr(p.ParameterValue))
 		}
 	}
 
@@ -94,7 +93,7 @@ func run(ctx context.Context, stackName string, args []string) error {
 	_, err = svc.UpdateStack(ctx, &cloudformation.UpdateStackInput{
 		StackName:           &stackName,
 		ClientRequestToken:  &token,
-		UsePreviousTemplate: aws.Bool(true),
+		UsePreviousTemplate: ptr(true),
 		Parameters:          params,
 		Capabilities:        stack.Capabilities,
 		NotificationARNs:    stack.NotificationARNs,
@@ -120,17 +119,17 @@ func run(ctx context.Context, stackName string, args []string) error {
 				return err
 			}
 			for _, evt := range page.StackEvents {
-				if evt.Timestamp != nil && aws.ToTime(evt.Timestamp).Before(oldEventsCutoff) {
+				if evt.Timestamp != nil && unptr(evt.Timestamp).Before(oldEventsCutoff) {
 					break scanEvents
 				}
 				if evt.ClientRequestToken == nil || *evt.ClientRequestToken != token {
 					continue
 				}
-				if evt.ResourceStatus == types.ResourceStatusUpdateFailed && aws.ToString(evt.ResourceStatusReason) != "Resource update cancelled" {
-					return fmt.Errorf("%v: %s", evt.ResourceStatus, aws.ToString(evt.ResourceStatusReason))
+				if evt.ResourceStatus == types.ResourceStatusUpdateFailed && unptr(evt.ResourceStatusReason) != "Resource update cancelled" {
+					return fmt.Errorf("%v: %s", evt.ResourceStatus, unptr(evt.ResourceStatusReason))
 				}
-				debugf("%s\t%s\t%v", aws.ToString(evt.ResourceType), aws.ToString(evt.LogicalResourceId), evt.ResourceStatus)
-				if aws.ToString(evt.LogicalResourceId) == stackName && aws.ToString(evt.ResourceType) == "AWS::CloudFormation::Stack" {
+				debugf("%s\t%s\t%v", unptr(evt.ResourceType), unptr(evt.LogicalResourceId), evt.ResourceStatus)
+				if unptr(evt.LogicalResourceId) == stackName && unptr(evt.ResourceType) == "AWS::CloudFormation::Stack" {
 					switch evt.ResourceStatus {
 					case types.ResourceStatusUpdateRollbackComplete,
 						types.ResourceStatusRollbackFailed:
@@ -203,4 +202,13 @@ func parseKvs(list []string) (map[string]string, error) {
 		out[k] = v
 	}
 	return out, nil
+}
+
+func ptr[T any](v T) *T { return &v }
+func unptr[T any](v *T) T {
+	var zero T
+	if v != nil {
+		return *v
+	}
+	return zero
 }
