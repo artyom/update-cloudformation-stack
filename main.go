@@ -126,7 +126,7 @@ func run(ctx context.Context, stackName string, args []string) error {
 					continue
 				}
 				if evt.ResourceStatus == types.ResourceStatusUpdateFailed && unptr(evt.ResourceStatusReason) != "Resource update cancelled" {
-					return fmt.Errorf("%v: %s", evt.ResourceStatus, unptr(evt.ResourceStatusReason))
+					return fmt.Errorf("%s %v: %s", unptr(evt.LogicalResourceId), evt.ResourceStatus, unptr(evt.ResourceStatusReason))
 				}
 				debugf("%s\t%s\t%v", unptr(evt.ResourceType), unptr(evt.LogicalResourceId), evt.ResourceStatus)
 				if unptr(evt.LogicalResourceId) == stackName && unptr(evt.ResourceType) == "AWS::CloudFormation::Stack" {
