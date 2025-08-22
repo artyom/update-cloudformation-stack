@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -104,6 +105,7 @@ func run(ctx context.Context, stackName string, args []string) error {
 	log.Print("polling for stack updates until it's ready, this may take a while")
 	oldEventsCutoff := time.Now().Add(-time.Hour)
 	ticker := time.NewTicker(20 * time.Second)
+	var likelyRootCause error
 	defer ticker.Stop()
 	for {
 		select {
@@ -125,15 +127,16 @@ func run(ctx context.Context, stackName string, args []string) error {
 				if evt.ClientRequestToken == nil || *evt.ClientRequestToken != token {
 					continue
 				}
-				if evt.ResourceStatus == types.ResourceStatusUpdateFailed && unptr(evt.ResourceStatusReason) != "Resource update cancelled" {
-					return fmt.Errorf("%s %v: %s", unptr(evt.LogicalResourceId), evt.ResourceStatus, unptr(evt.ResourceStatusReason))
+				if likelyRootCause == nil && evt.ResourceStatus == types.ResourceStatusUpdateFailed && unptr(evt.ResourceStatusReason) != "Resource update cancelled" {
+					likelyRootCause = fmt.Errorf("%s %v: %s", unptr(evt.LogicalResourceId), evt.ResourceStatus, unptr(evt.ResourceStatusReason))
+					debugf("likely root cause: %v", likelyRootCause)
 				}
 				debugf("%s\t%s\t%v", unptr(evt.ResourceType), unptr(evt.LogicalResourceId), evt.ResourceStatus)
 				if unptr(evt.LogicalResourceId) == stackName && unptr(evt.ResourceType) == "AWS::CloudFormation::Stack" {
 					switch evt.ResourceStatus {
 					case types.ResourceStatusUpdateRollbackComplete,
 						types.ResourceStatusRollbackFailed:
-						return fmt.Errorf("%v, see AWS CloudFormation Console for more details", evt.ResourceStatus)
+						return cmp.Or(likelyRootCause, fmt.Errorf("%v, see AWS CloudFormation Console for more details", evt.ResourceStatus))
 					case types.ResourceStatusUpdateComplete:
 						return nil
 					}
